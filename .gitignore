@@ -82,6 +82,8 @@ result
 
 # Gas Town (added by gt)
 __pycache__/
+.runtime/
+CLAUDE.local.md
 
 # Dolt database files (added by bd init)
 .dolt/
