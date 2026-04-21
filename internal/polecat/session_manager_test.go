@@ -336,42 +336,29 @@ func TestPolecatStartInjectsFallbackEnvVars(t *testing.T) {
 	}
 }
 
-func TestEnsureCanonicalSessionBranch_UsesOriginDefaultBranch(t *testing.T) {
+func TestPlanFreshBranch_BaseBranchCreatesIssueBranch(t *testing.T) {
 	workDir, repoGit := setupSessionBranchTestRepo(t)
 
-	baseSHA, err := repoGit.Rev("origin/main")
+	baseSHA, err := repoGit.Rev("main")
 	if err != nil {
-		t.Fatalf("resolve origin/main: %v", err)
-	}
-	if err := repoGit.CheckoutNewBranch("polecat/toast-old", "main"); err != nil {
-		t.Fatalf("checkout stale polecat branch: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(workDir, "stale.txt"), []byte("stale\n"), 0644); err != nil {
-		t.Fatalf("write stale.txt: %v", err)
-	}
-	if err := repoGit.Add("stale.txt"); err != nil {
-		t.Fatalf("git add stale.txt: %v", err)
-	}
-	if err := repoGit.Commit("stale local polecat commit"); err != nil {
-		t.Fatalf("git commit stale.txt: %v", err)
-	}
-	staleSHA, err := repoGit.Rev("HEAD")
-	if err != nil {
-		t.Fatalf("resolve stale HEAD: %v", err)
+		t.Fatalf("resolve main: %v", err)
 	}
 
 	sm := NewSessionManager(tmux.NewTmux(), &rig.Rig{Name: "gastown", Path: workDir})
-	branch := sm.ensureCanonicalSessionBranch(repoGit, "toast", SessionStartOptions{Issue: "gt-9qb"})
+	plan := sm.planFreshBranch(repoGit, "main")
+	if !plan.Create {
+		t.Fatalf("plan.Create = false, want true for base branch")
+	}
+
+	branch := sm.freshBranchName("toast", "gt-9qb")
 	if !strings.Contains(branch, "/gt-9qb@") {
 		t.Fatalf("fresh session branch = %q, want issue-scoped branch", branch)
 	}
-
-	staleAncestor, err := repoGit.IsAncestor(staleSHA, branch)
-	if err != nil {
-		t.Fatalf("check stale ancestry: %v", err)
+	if err := repoGit.CheckoutNewBranch(branch, plan.StartPoint); err != nil {
+		t.Fatalf("checkout fresh branch: %v", err)
 	}
-	if staleAncestor {
-		t.Fatalf("fresh session branch %q unexpectedly includes stale local commit %s", branch, staleSHA)
+	if err := setBranchMergeBase(workDir, branch, plan.MergeBase); err != nil {
+		t.Fatalf("set merge base: %v", err)
 	}
 
 	baseAncestor, err := repoGit.IsAncestor(baseSHA, branch)
@@ -379,11 +366,18 @@ func TestEnsureCanonicalSessionBranch_UsesOriginDefaultBranch(t *testing.T) {
 		t.Fatalf("check canonical ancestry: %v", err)
 	}
 	if !baseAncestor {
-		t.Fatalf("fresh session branch %q should descend from origin/main commit %s", branch, baseSHA)
+		t.Fatalf("fresh session branch %q should descend from main commit %s", branch, baseSHA)
+	}
+	mergeBase, err := repoGit.ConfigGet("branch." + branch + ".gh-merge-base")
+	if err != nil {
+		t.Fatalf("get merge base config: %v", err)
+	}
+	if mergeBase != "main" {
+		t.Fatalf("merge base = %q, want main", mergeBase)
 	}
 }
 
-func TestEnsureCanonicalSessionBranch_KeepsCurrentIssueBranch(t *testing.T) {
+func TestPlanFreshBranch_KeepsCurrentIssueBranch(t *testing.T) {
 	workDir, repoGit := setupSessionBranchTestRepo(t)
 
 	currentBranch := "polecat/toast/gt-9qb@seed"
@@ -392,9 +386,9 @@ func TestEnsureCanonicalSessionBranch_KeepsCurrentIssueBranch(t *testing.T) {
 	}
 
 	sm := NewSessionManager(tmux.NewTmux(), &rig.Rig{Name: "gastown", Path: workDir})
-	branch := sm.ensureCanonicalSessionBranch(repoGit, "toast", SessionStartOptions{Issue: "gt-9qb"})
-	if branch != currentBranch {
-		t.Fatalf("ensureCanonicalSessionBranch changed active issue branch: got %q want %q", branch, currentBranch)
+	plan := sm.planFreshBranch(repoGit, currentBranch)
+	if plan.Create {
+		t.Fatalf("planFreshBranch wants fresh branch for active issue branch %q: %#v", currentBranch, plan)
 	}
 }
 

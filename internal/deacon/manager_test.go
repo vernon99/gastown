@@ -4,12 +4,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/runtime"
 	"github.com/steveyegge/gastown/internal/tmux"
 )
 
@@ -271,7 +269,7 @@ func TestStart_WaitForCommandFails(t *testing.T) {
 	// acceptable - the WaitForCommand path isn't reachable in test env.
 }
 
-func TestStart_PromptNoneBootstrapWaitsAndNudges(t *testing.T) {
+func TestStart_BootstrapWaitsAndNudges(t *testing.T) {
 	townRoot := t.TempDir()
 	settingsDir := filepath.Join(townRoot, "settings")
 	if err := os.MkdirAll(settingsDir, 0755); err != nil {
@@ -289,33 +287,21 @@ func TestStart_PromptNoneBootstrapWaitsAndNudges(t *testing.T) {
 		t.Fatalf("Start() error = %v", err)
 	}
 
-	if mock.waitReadyCalls != 2 {
-		t.Fatalf("waitReadyCalls = %d, want 2", mock.waitReadyCalls)
+	if mock.waitReadyCalls != 1 {
+		t.Fatalf("waitReadyCalls = %d, want 1", mock.waitReadyCalls)
 	}
-	if len(mock.waitReadyRCs) != 2 {
-		t.Fatalf("waitReadyRCs = %d, want 2", len(mock.waitReadyRCs))
+	if len(mock.waitReadyRCs) != 1 {
+		t.Fatalf("waitReadyRCs = %d, want 1", len(mock.waitReadyRCs))
 	}
-	if mock.waitReadyRCs[0] == nil || mock.waitReadyRCs[0].PromptMode != "none" {
-		t.Fatalf("first runtime wait rc = %#v, want prompt_mode none", mock.waitReadyRCs[0])
-	}
-	if mock.waitReadyRCs[1] == nil || mock.waitReadyRCs[1].Tmux == nil {
-		t.Fatalf("second runtime wait rc missing tmux config: %#v", mock.waitReadyRCs[1])
-	}
-	if mock.waitReadyRCs[1].Tmux.ReadyPromptPrefix != "" {
-		t.Fatalf("second wait ReadyPromptPrefix = %q, want empty", mock.waitReadyRCs[1].Tmux.ReadyPromptPrefix)
-	}
-	if mock.waitReadyRCs[1].Tmux.ReadyDelayMs < runtime.DefaultPrimeWaitMs {
-		t.Fatalf("second wait ReadyDelayMs = %d, want >= %d", mock.waitReadyRCs[1].Tmux.ReadyDelayMs, runtime.DefaultPrimeWaitMs)
+	if mock.waitReadyRCs[0] == nil || mock.waitReadyRCs[0].PromptMode != "arg" {
+		t.Fatalf("runtime wait rc = %#v, want prompt_mode arg", mock.waitReadyRCs[0])
 	}
 
-	if len(mock.nudges) != 2 {
-		t.Fatalf("nudges = %#v, want fallback command plus startup prompt", mock.nudges)
+	if len(mock.nudges) != 1 {
+		t.Fatalf("nudges = %#v, want fallback command", mock.nudges)
 	}
 	if mock.nudges[0] != "gt prime && gt mail check --inject" {
 		t.Fatalf("nudges[0] = %q, want startup fallback command", mock.nudges[0])
-	}
-	if !strings.Contains(mock.nudges[1], "I am Deacon. Start patrol: run gt deacon heartbeat, then check gt hook. If no hook, create mol-deacon-patrol wisp and execute it.") {
-		t.Fatalf("nudges[1] = %q, want startup prompt payload", mock.nudges[1])
 	}
 }
 
