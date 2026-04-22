@@ -78,3 +78,65 @@ func TestSessionInfoJSONOutputNotRunning(t *testing.T) {
 		t.Errorf("running = %v, want false", parsed["running"])
 	}
 }
+
+func TestRecoverableSessionIssue(t *testing.T) {
+	tests := []struct {
+		name          string
+		state         polecat.State
+		polecatIssue  string
+		polecatBranch string
+		want          string
+	}{
+		{
+			name:          "active polecat issue wins over branch",
+			state:         polecat.StateWorking,
+			polecatIssue:  "tg-live",
+			polecatBranch: "polecat/furiosa/tg-branch@mk123",
+			want:          "tg-live",
+		},
+		{
+			name:          "issue branch rescues missing issue",
+			state:         polecat.StateWorking,
+			polecatBranch: "polecat/furiosa/tg-branch@mk123",
+			want:          "tg-branch",
+		},
+		{
+			name:          "modern timestamp branch has no issue",
+			state:         polecat.StateWorking,
+			polecatBranch: "polecat/furiosa-mk123",
+			want:          "",
+		},
+		{
+			name:          "invalid polecat branch segment is ignored",
+			state:         polecat.StateWorking,
+			polecatBranch: "polecat/furiosa/not-a-bead@mk123",
+			want:          "",
+		},
+		{
+			name:          "idle polecat does not recover stale branch issue",
+			state:         polecat.StateIdle,
+			polecatBranch: "polecat/furiosa/tg-branch@mk123",
+			want:          "",
+		},
+		{
+			name:          "non polecat branch is ignored",
+			state:         polecat.StateWorking,
+			polecatBranch: "codex/gamejam-webgpu-rig",
+			want:          "",
+		},
+		{
+			name:  "empty when no source exists",
+			state: polecat.StateWorking,
+			want:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := recoverableSessionIssue(tt.state, tt.polecatIssue, tt.polecatBranch)
+			if got != tt.want {
+				t.Errorf("recoverableSessionIssue() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

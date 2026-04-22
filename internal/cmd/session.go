@@ -269,6 +269,9 @@ func runSessionStart(cmd *cobra.Command, args []string) error {
 	opts := polecat.SessionStartOptions{
 		Issue: sessionIssue,
 	}
+	if opts.Issue == "" {
+		opts.Issue = recoverSessionIssue(rigName, polecatName)
+	}
 
 	fmt.Printf("Starting session for %s/%s...\n", rigName, polecatName)
 	if err := polecatMgr.Start(polecatName, opts); err != nil {
@@ -283,7 +286,7 @@ func runSessionStart(cmd *cobra.Command, args []string) error {
 	if townRoot, err := workspace.FindFromCwd(); err == nil && townRoot != "" {
 		agent := fmt.Sprintf("%s/%s", rigName, polecatName)
 		logger := townlog.NewLogger(townRoot)
-		_ = logger.Log(townlog.EventWake, agent, sessionIssue)
+		_ = logger.Log(townlog.EventWake, agent, opts.Issue)
 	}
 
 	return nil
@@ -514,6 +517,7 @@ func runSessionRestart(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	restartIssue := recoverSessionIssue(rigName, polecatName)
 
 	// Check if running
 	running, err := polecatMgr.IsRunning(polecatName)
@@ -546,7 +550,7 @@ func runSessionRestart(cmd *cobra.Command, args []string) error {
 
 	// Start fresh session
 	fmt.Printf("Starting session for %s/%s...\n", rigName, polecatName)
-	opts := polecat.SessionStartOptions{}
+	opts := polecat.SessionStartOptions{Issue: restartIssue}
 	if err := polecatMgr.Start(polecatName, opts); err != nil {
 		return fmt.Errorf("starting session: %w", err)
 	}
@@ -555,6 +559,39 @@ func runSessionRestart(cmd *cobra.Command, args []string) error {
 		style.Bold.Render("✓"),
 		style.Dim.Render(fmt.Sprintf("gt session at %s/%s", rigName, polecatName)))
 	return nil
+}
+
+func recoverableSessionIssue(state polecat.State, polecatIssue, polecatBranch string) string {
+	if state == polecat.StateIdle {
+		return ""
+	}
+	if polecatIssue != "" {
+		return polecatIssue
+	}
+	return sessionBranchIssue(polecatBranch)
+}
+
+func sessionBranchIssue(branch string) string {
+	if !strings.HasPrefix(branch, "polecat/") {
+		return ""
+	}
+	issue := parseBranchName(branch).Issue
+	if issuePattern.FindString(issue) != issue {
+		return ""
+	}
+	return issue
+}
+
+func recoverSessionIssue(rigName, polecatName string) string {
+	polecatMgr, _, err := getPolecatManager(rigName)
+	if err != nil {
+		return ""
+	}
+	info, err := polecatMgr.Get(polecatName)
+	if err != nil || info == nil {
+		return ""
+	}
+	return recoverableSessionIssue(info.State, info.Issue, info.Branch)
 }
 
 func runSessionStatus(cmd *cobra.Command, args []string) error {
